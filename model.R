@@ -5,8 +5,15 @@ library(SnowballC)
 library(tm)
 library(data.table)
 
+# Expected data format:
+# author,body,score,depth,subreddit,permalink,max_score_at_depth
+
+# CONSTANTS
+TRAINING_RATIO <- 0.75
+FREQUENCY_ELIMINATION <- 4
+
 # Import our data
-reddit <- read.csv("reddit.csv", stringsAsFactors = FALSE)
+reddit <- read.csv("aww.csv", stringsAsFactors = FALSE)
 senticnet <- read.csv("senticnet.csv", stringsAsFactors = FALSE)
 
 # Types of analysis we can do:
@@ -25,7 +32,7 @@ senticnet <- read.csv("senticnet.csv", stringsAsFactors = FALSE)
 senticnet$classified_score <- cut(senticnet$score, breaks = c(-1, 0, 1), right = FALSE, labels = c("Positive", "Negative"))
 
 # Determine the points ratio
-reddit$points_ratio <- reddit$points / reddit$maxscore_at_depth
+reddit$points_ratio <- reddit$score / reddit$max_score_at_depth
 
 # Classify points as negative, low, medium, high
 reddit$classified_points <- cut(reddit$points_ratio,
@@ -34,7 +41,7 @@ reddit$classified_points <- cut(reddit$points_ratio,
                                 labels = c("negative", "low", "medium", "high"))
 
 # Prepare our reddit comments for analysis
-reddit_corpus <- VCorpus(VectorSource(reddit$comment))
+reddit_corpus <- VCorpus(VectorSource(reddit$body))
 reddit_corpus_clean <- tm_map(reddit_corpus, content_transformer(tolower))
 reddit_corpus_clean <- tm_map(reddit_corpus_clean, content_transformer(stri_escape_unicode))
 reddit_corpus_clean <- tm_map(reddit_corpus_clean, removeWords, stopwords())
@@ -43,16 +50,19 @@ reddit_corpus_clean <- tm_map(reddit_corpus_clean, stemDocument)
 reddit_corpus_clean <- tm_map(reddit_corpus_clean, stripWhitespace)
 reddit_dtm <- DocumentTermMatrix(reddit_corpus_clean)
 
-# Create the training dataset
-reddit_dtm_train <- reddit_dtm[1:25, ]
-reddit_dtm_test <- reddit_dtm[26:50, ]
+# Define the sizes of our datasets
+train_size <- round(TRAINING_RATIO * nrow(reddit))
 
-reddit_train_labels <- reddit[1:25, ]$classified_points
-reddit_test_labels <- reddit[26:50, ]$classified_points
+# Create the training dataset
+reddit_dtm_train <- reddit_dtm[1:train_size, ]
+reddit_dtm_test <- reddit_dtm[train_size:nrow(reddit), ]
+
+reddit_train_labels <- reddit[1:train_size, ]$classified_points
+reddit_test_labels <- reddit[train_size:nrow(reddit), ]$classified_points
 
 # Eliminate words that don't appear in many comments
-# TODO: raise this value
-reddit_freq_terms <- findFreqTerms(reddit_dtm_train, 1)
+# TODO: Adjust this value as need
+reddit_freq_terms <- findFreqTerms(reddit_dtm_train, FREQUENCY_ELIMINATION)
 reddit_dtm_freq_train <- reddit_dtm_train[ , reddit_freq_terms]
 reddit_dtm_freq_test <- reddit_dtm_test[ , reddit_freq_terms]
 
